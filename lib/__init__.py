@@ -1,1 +1,1 @@
-from .utils import display_batch
+from .utils import display_batch, display_sample
