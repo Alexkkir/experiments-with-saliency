@@ -1,0 +1,8 @@
+*.pth
+*.ckpt
+*.tar
+*.zip
+*.7z
+*.rar
+*.pkl
+checkpoints/*
