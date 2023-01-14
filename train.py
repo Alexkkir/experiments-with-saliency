@@ -26,6 +26,8 @@ import matplotlib.pyplot as plt
 from math import floor, ceil
 from sklearn.model_selection import train_test_split
 from scipy import stats
+import plotly.express as px
+import seaborn as sns
 
 import shutil
 import requests
@@ -40,27 +42,38 @@ import pickle
 
 from IPython.display import clear_output
 
-
+sns.set_theme()
 matplotlib.rcParams['figure.figsize'] = (30, 5)
 
 # %%
 IMAGE_SHAPE = (384, 512)
-
 DATA_ROOT = Path('iqa')
+MEAN = np.array([0.485, 0.456, 0.406])
+STD = np.array([0.229, 0.224, 0.225])
 
 # %%
 class IQADataset(Dataset):
-    def __init__(self, images_path, labels_path, mode, transforms=None):
+    def __init__(self, images_path, labels_path, mode, saliency_path=None, transforms=None):
+        assert isinstance(images_path, str) or isinstance(images_path, Path)
+        assert isinstance(labels_path, str) or isinstance(labels_path, Path)
+        assert saliency_path is None or isinstance(saliency_path, str) or isinstance(saliency_path, Path)
         assert mode in ['train', 'valid', 'test', 'all']
+        assert transforms is None or isinstance(transforms, dict) and np.all([isinstance(t, A.BaseCompose) for t in transforms.values()])
+
         TRAIN_RATIO = 0.7
         TRAIN_VALID_RATIO = 0.8
+
         self.images_path = images_path
-        self.files = os.listdir(images_path)
         self.labels_path = labels_path
+        self.saliency_path = saliency_path
+
+        self.saliency = True if saliency_path is not None else False
 
         df = pd.read_csv(labels_path).astype('float32', errors='ignore')
         train_size = int(TRAIN_RATIO * len(df))
         train_valid_size = int(TRAIN_VALID_RATIO * len(df))
+
+        self.mode = mode
 
         if mode == 'train':
             self.df = df.iloc[:train_size]
@@ -72,8 +85,7 @@ class IQADataset(Dataset):
             self.df = df
 
         self.transforms = transforms
-        self.default_size = (500, 500)
-        self.mode = mode
+        self.file2suffix_saliency = {Path(file).with_suffix(''): Path(file).suffix for file in os.listdir(saliency_path)}
 
     def __len__(self):
         return len(self.df)
@@ -83,35 +95,89 @@ class IQADataset(Dataset):
         image = cv2.imread(str(self.images_path / name))
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-        if image.ndim == 2:
-            image = np.expand_dims(image, 2)
-
-        if image.shape[:2] != self.default_size:
-            image = cv2.resize(image, self.default_size)
+        if self.saliency:
+            name_clean= Path(name).with_suffix('')
+            name_sal = str(name_clean) + self.file2suffix_saliency[name_clean]
+            name_sal = str(self.saliency_path / name_sal)
+            saliency = cv2.imread(name_sal)
+            saliency = saliency[..., 0:1]
 
         if self.transforms:
-            image = self.transforms(image=image)['image']
-        return {'image': image, 'name': name, 'subj_mean': subj_mean, 'subj_std': subj_std}
+            NUM_CHANNELS = 3
+
+            # first stage: preprocessing (resize)
+            image = self.transforms['1_both'](image=image)['image']
+            if self.saliency:
+                saliency = self.transforms['1_both'](image=saliency)['image']
+            image = np.dstack([image, saliency])
+
+            # second stage: augmentations (hflip, rotate)
+            image = self.transforms['2_both'](image=image)['image']
+
+            # third stage: postprocessing (normalization, to_tensor)
+            image, saliency = image[..., :NUM_CHANNELS], image[..., NUM_CHANNELS:]
+            image = self.transforms['3_images'](image=image)['image']
+            if self.saliency:
+                saliency = self.transforms['3_saliency'](image=saliency)['image']
+        
+        out = {'image': image, 'name': name, 'subj_mean': subj_mean, 'subj_std': subj_std}
+        if self.saliency:
+            out['saliency'] = saliency
+        return out
 
 # %%
-transforms = A.Compose([
-    A.Resize(*IMAGE_SHAPE),
-    A.HorizontalFlip(),
-    A.Normalize(),
-    ToTensorV2(),
-])
-dataset_train = IQADataset(images_path=DATA_ROOT / 'koniq10k' / 'images', labels_path=DATA_ROOT / 'koniq_data.csv', mode='train', transforms=transforms)
-dataset_valid = IQADataset(images_path=DATA_ROOT / 'koniq10k' / 'images', labels_path=DATA_ROOT / 'koniq_data.csv', mode='valid', transforms=transforms)
-# dataset_test = IQADataset(images_path=DATA_ROOT / 'CLIVE' / 'images', labels_path=DATA_ROOT / 'clive_data.csv', mode='all', transforms=transforms)
+transforms = {
+    '1_both': A.Compose([
+        A.Resize(*IMAGE_SHAPE),
+    ]),
+    '2_both': A.Compose([
+        A.HorizontalFlip()
+    ]),
+    '3_images': A.Compose([
+        A.Normalize(),
+        ToTensorV2(),
+    ]),
+    '3_saliency': A.Compose([
+        A.ToFloat(max_value=255),
+        ToTensorV2(),
+    ])
+}
 
-# %%
+dataset_train = IQADataset(
+    images_path=DATA_ROOT / 'koniq10k' / 'images',
+    labels_path=DATA_ROOT / 'koniq_data.csv', 
+    saliency_path=DATA_ROOT / 'koniq10k' / 'saliency_maps',
+    mode='train', 
+    transforms=transforms)
+
+dataset_valid = IQADataset(
+    images_path=DATA_ROOT / 'koniq10k' / 'images',
+    labels_path=DATA_ROOT / 'koniq_data.csv', 
+    saliency_path=DATA_ROOT / 'koniq10k' / 'saliency_maps',
+    mode='test', 
+    transforms=transforms)
+
+dataset_test = IQADataset(
+    images_path=DATA_ROOT / 'CLIVE' / 'images',
+    labels_path=DATA_ROOT / 'clive_data.csv',
+    saliency_path=DATA_ROOT / 'CLIVE' / 'saliency_maps',
+    mode='all', 
+    transforms=transforms)
+
 loader_train = DataLoader(dataset_train, batch_size=16, shuffle=True, num_workers=16)
+loader_valid = DataLoader(dataset_valid, batch_size=16, shuffle=True, num_workers=16)
+loader_test = DataLoader(dataset_test, batch_size=16, shuffle=True, num_workers=16)
+
+# %%
 batch = next(iter(loader_train))
 lib.display_batch(batch, 'subj_mean')
 
 # %%
-loader_valid = DataLoader(dataset_valid, batch_size=16, shuffle=True, num_workers=16)
 batch = next(iter(loader_valid))
+lib.display_batch(batch, 'subj_mean')
+
+# %%
+batch = next(iter(loader_test))
 lib.display_batch(batch, 'subj_mean')
 
 # %%
@@ -213,7 +279,7 @@ class Model(pl.LightningModule):
         plcc = stats.pearsonr(predicted, true)[0]
         srocc = stats.spearmanr(predicted, true)[0]
 
-        print(f"| TRAIN plcc: {plcc:.2f}, srocc: {srocc:.2f}, loss: {avg_loss:.2f}" )
+        self.print(f"| TRAIN plcc: {plcc:.2f}, srocc: {srocc:.2f}, loss: {avg_loss:.2f}" )
 
         self.log('train_loss', avg_loss, prog_bar=True, on_epoch=True, on_step=False)
         self.log('train_plcc', plcc, prog_bar=True, on_epoch=True, on_step=False)
@@ -229,7 +295,7 @@ class Model(pl.LightningModule):
         plcc = stats.pearsonr(predicted, true)[0]
         srocc = stats.spearmanr(predicted, true)[0]
 
-        print(f"[Epoch {self.trainer.current_epoch:3}] VALID plcc: {plcc:.2f}, srocc: {srocc:.2f}, loss: {avg_loss:.2f}", end= " ")
+        self.print(f"[Epoch {self.trainer.current_epoch:3}] VALID plcc: {plcc:.2f}, srocc: {srocc:.2f}, loss: {avg_loss:.2f}", end= " ")
 
         self.log('val_loss', avg_loss, prog_bar=True, on_epoch=True, on_step=False)
         self.log('val_plcc', plcc, prog_bar=True, on_epoch=True, on_step=False)
@@ -261,3 +327,42 @@ model = Model()
 
 # %%
 trainer.fit(model, loader_train, loader_valid)
+
+# %%
+# model.load_state_dict(torch.load('/home/alexkkir/experiments-with-saliency/checkpoints/epoch=50_val_srocc=0.892_val_plcc=0.924_val_loss=31.774.ckpt')['state_dict'])
+# model.eval()
+# clear_output()
+
+# %%
+trainer.validate(model, loader_test)
+
+# # %%
+# device = torch.device('cuda:1')
+# model.to(device)
+# model.eval()
+# clear_output()
+
+# # %%
+# df = dataset_valid.df.copy().set_index('name')
+# df['pred'] = .0
+# for i, sample in tqdm(enumerate(dataset_valid), total=len(df)):
+#     image = sample['image'].unsqueeze(0).to(device)
+#     name = sample['name']
+#     pred = model(image)
+#     pred = float(pred.detach().cpu())
+#     df.loc[name, 'pred'] = pred
+
+# # %%
+# df.corr('pearson')
+
+# # %%
+# np.mean((df.subj_mean - df.pred).values ** 2)
+
+# # %%
+# plt.figure(figsize=(7, 7))
+# sns.scatterplot(data=df, x='subj_mean', y='pred', s=4)
+
+# # %%
+# df.to_csv('efficient_results.csv')
+
+
