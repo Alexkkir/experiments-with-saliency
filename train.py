@@ -18,6 +18,7 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import cv2
 from torchvision.datasets import ImageFolder
+from torchsummary import summary
 
 import numpy as np
 import pandas as pd
@@ -47,6 +48,7 @@ matplotlib.rcParams['figure.figsize'] = (30, 5)
 
 # %%
 IMAGE_SHAPE = (384, 512)
+SAL_RESIZE = (12, 16)
 DATA_ROOT = Path('iqa')
 MEAN = np.array([0.485, 0.456, 0.406])
 STD = np.array([0.229, 0.224, 0.225])
@@ -138,6 +140,7 @@ transforms = {
         ToTensorV2(),
     ]),
     '3_saliency': A.Compose([
+        A.Resize(*SAL_RESIZE),
         A.ToFloat(max_value=255),
         ToTensorV2(),
     ])
@@ -165,8 +168,8 @@ dataset_test = IQADataset(
     transforms=transforms)
 
 loader_train = DataLoader(dataset_train, batch_size=16, shuffle=True, num_workers=16)
-loader_valid = DataLoader(dataset_valid, batch_size=16, shuffle=True, num_workers=16)
-loader_test = DataLoader(dataset_test, batch_size=16, shuffle=True, num_workers=16)
+loader_valid = DataLoader(dataset_valid, batch_size=16, shuffle=False, num_workers=16)
+loader_test = DataLoader(dataset_test, batch_size=16, shuffle=False, num_workers=16)
 
 # %%
 batch = next(iter(loader_train))
@@ -209,7 +212,7 @@ class Model(pl.LightningModule):
         backbone = torchvision.models.efficientnet_b2(weights=torchvision.models.EfficientNet_B2_Weights.IMAGENET1K_V1)
         backbone = list(backbone.children())[:-2]
         backbone = nn.Sequential(*backbone)
-
+        backbone[0][8][2].inplace = False
         self.backbone = backbone
         
         self.mlp = nn.Sequential(
@@ -220,18 +223,28 @@ class Model(pl.LightningModule):
             LinearBlock(256, 1, 0, activation=False)
         )
 
-        self.loss = nn.MSELoss()
+        self.sal_conv = nn.Conv2d(1408, 1, (1, 1), 1, 0)
+        self.mse_loss = nn.MSELoss()
+        self.alpha_sal = 0.2
+
+    def saliency_loss(self, pred, y):
+        return ((pred / pred.mean() - y / y.mean()) ** 2).sum()
 
     def forward(self, x):
         x = self.backbone(x)
+        saliency = self.sal_conv(x)
+        x = saliency * x # fusion
         x = self.mlp(x)
-        return x
+        return x, saliency
 
     def training_step(self, batch, batch_idx):
         """the full training loop"""
-        x, y = batch['image'], batch['subj_mean']
-        pred = self(x).flatten()
-        loss = self.loss(pred, y)
+        x, sal_target, y = batch['image'], batch['saliency'], batch['subj_mean']
+        pred, sal_pred = self(x)
+        pred = pred.flatten()
+
+        loss = self.mse_loss(pred, y) * (1 - self.alpha_sal) + self.saliency_loss(sal_pred, sal_target) * self.alpha_sal
+
         true = y.detach().cpu().numpy()
         pred = pred.detach().cpu().numpy()
         return {'loss': loss, 'results': (true, pred)}
@@ -239,9 +252,12 @@ class Model(pl.LightningModule):
     # OPTIONAL
     def validation_step(self, batch, batch_idx):
         """the full validation loop"""
-        x, y = batch['image'], batch['subj_mean']
-        pred = self(x).flatten()
-        loss = self.loss(pred, y)
+        x, sal_target, y = batch['image'], batch['saliency'], batch['subj_mean']
+        pred, sal_pred = self(x)
+        pred = pred.flatten()
+        
+        loss = self.mse_loss(pred, y) * (1 - self.alpha_sal) + self.saliency_loss(sal_pred, sal_target) * self.alpha_sal
+
         true = y.detach().cpu().numpy()
         pred = pred.detach().cpu().numpy()
         return {'loss': loss, 'results': (true, pred)}
@@ -326,6 +342,14 @@ trainer = pl.Trainer(
 model = Model()
 
 # %%
+# summary(model.to(torch.device('cuda')), (3, *IMAGE_SHAPE))
+
+# %%
+# selected_conv = model.backbone[0][3][0].block[1][0]
+# another_conv = model.backbone[0][3][0].block[0][0]
+# selected_conv == another_conv, selected_conv == selected_conv
+
+# %%
 trainer.fit(model, loader_train, loader_valid)
 
 # %%
@@ -336,13 +360,13 @@ trainer.fit(model, loader_train, loader_valid)
 # %%
 trainer.validate(model, loader_test)
 
-# # %%
+# %%
 # device = torch.device('cuda:1')
 # model.to(device)
 # model.eval()
 # clear_output()
 
-# # %%
+# %%
 # df = dataset_valid.df.copy().set_index('name')
 # df['pred'] = .0
 # for i, sample in tqdm(enumerate(dataset_valid), total=len(df)):

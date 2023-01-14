@@ -53,11 +53,14 @@ def display_batch(loader, label='subj_mean', cols=8):
 
         if 'saliency' in batch:
             sal = batch['saliency'][i].permute(1, 2, 0)
+            sal = torch.dstack([sal] * 3)
             if isinstance(image, np.ndarray):
                 red = np.zeros_like(image)
             elif isinstance(image, torch.Tensor):
                 red = torch.zeros_like(image)
             red[..., 2] = 255
+            n, m, _ = image.shape
+            sal = cv2.resize(np.array(sal), (m, n))
             image = image * (1 - sal) + red * sal
 
         image = image.type(torch.uint8)
