@@ -228,7 +228,7 @@ class Model(pl.LightningModule):
         self.alpha_sal = 0.2
 
     def saliency_loss(self, pred, y):
-        return ((pred / pred.mean() - y / y.mean()) ** 2).sum()
+        return ((pred / pred.mean() - y / y.mean()) ** 2).mean()
 
     def forward(self, x):
         x = self.backbone(x)
