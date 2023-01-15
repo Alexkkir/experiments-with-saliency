@@ -50,6 +50,10 @@ sns.set_theme()
 matplotlib.rcParams['figure.figsize'] = (30, 5)
 
 device_idx = int(sys.argv[1])
+comment = sys.argv[2]
+use_saliency = bool(int(sys.argv[3]))
+
+print(device_idx, comment, use_saliency)
 
 # %%
 IMAGE_SHAPE = (384, 512)
@@ -156,28 +160,28 @@ transforms = {
 
 dataset_train = IQADataset(
     images_path=DATA_ROOT / 'koniq10k' / 'images',
-    labels_path=DATA_ROOT / 'koniq_data.csv', 
+    labels_path=DATA_ROOT / 'koniq10k' / 'data.csv',
     saliency_path=DATA_ROOT / 'koniq10k' / 'saliency_maps',
     mode='train', 
     transforms=transforms)
 
 dataset_valid = IQADataset(
     images_path=DATA_ROOT / 'koniq10k' / 'images',
-    labels_path=DATA_ROOT / 'koniq_data.csv', 
+    labels_path=DATA_ROOT / 'koniq10k' / 'data.csv',
     saliency_path=DATA_ROOT / 'koniq10k' / 'saliency_maps',
     mode='valid', 
     transforms=transforms)
 
 dataset_test_koniq = IQADataset(
     images_path=DATA_ROOT / 'koniq10k' / 'images',
-    labels_path=DATA_ROOT / 'koniq_data.csv', 
+    labels_path=DATA_ROOT / 'koniq10k' / 'data.csv', 
     saliency_path=DATA_ROOT / 'koniq10k' / 'saliency_maps',
     mode='test', 
     transforms=transforms)
 
 dataset_test_clive = IQADataset(
     images_path=DATA_ROOT / 'CLIVE' / 'images',
-    labels_path=DATA_ROOT / 'clive_data.csv',
+    labels_path=DATA_ROOT / 'CLIVE' / 'data.csv',
     saliency_path=DATA_ROOT / 'CLIVE' / 'saliency_maps',
     mode='all', 
     transforms=transforms)
@@ -320,7 +324,7 @@ class Model(pl.LightningModule):
             "scheduler": lr_scheduler,
             "interval": "epoch",
             "frequency": 1,
-            "monitor": "val_srocc"
+            "monitor": "val/srocc"
         } 
 
         return [optimizer], [lr_dict]
@@ -337,9 +341,9 @@ class Model(pl.LightningModule):
 
         self.print(f"| TRAIN plcc: {plcc:.2f}, srocc: {srocc:.2f}, loss: {avg_loss:.2f}" )
 
-        self.log('train_loss', avg_loss, prog_bar=True, on_epoch=True, on_step=False)
-        self.log('train_plcc', plcc, prog_bar=True, on_epoch=True, on_step=False)
-        self.log('train_srocc', srocc, prog_bar=True, on_epoch=True, on_step=False)
+        self.log('train/loss', avg_loss, prog_bar=True, on_epoch=True, on_step=False)
+        self.log('train/plcc', plcc, prog_bar=True, on_epoch=True, on_step=False)
+        self.log('train/srocc', srocc, prog_bar=True, on_epoch=True, on_step=False)
 
     # OPTIONAL
     def validation_epoch_end(self, outputs):
@@ -353,14 +357,14 @@ class Model(pl.LightningModule):
 
         self.print(f"[Epoch {self.trainer.current_epoch:3}] VALID plcc: {plcc:.2f}, srocc: {srocc:.2f}, loss: {avg_loss:.2f}", end= " ")
 
-        self.log('val_loss', avg_loss, prog_bar=True, on_epoch=True, on_step=False)
-        self.log('val_plcc', plcc, prog_bar=True, on_epoch=True, on_step=False)
-        self.log('val_srocc', srocc, prog_bar=True, on_epoch=True, on_step=False)
+        self.log('val/loss', avg_loss, prog_bar=True, on_epoch=True, on_step=False)
+        self.log('val/plcc', plcc, prog_bar=True, on_epoch=True, on_step=False)
+        self.log('val/srocc', srocc, prog_bar=True, on_epoch=True, on_step=False)
 
 # %%
 wandb.init(
     project='IQA', 
-    name='with saliency',
+    name=comment,
     notes='want to repeat experiments several times to get mean result',
     config={
         'training_process': 'reduce on platueau by 0.2 + early stopping',
@@ -375,14 +379,14 @@ wandb.init(
 wandb_logger = WandbLogger()
 
 MyModelCheckpoint = ModelCheckpoint(dirpath='checkpoints/',
-                                    filename=f'date={lib.today()}_' + '{val_srocc:.3f}_{epoch}',
-                                    monitor='val_srocc', 
+                                    filename=f'date={lib.today()}_' + '{val/srocc:.3f}_{epoch}',
+                                    monitor='val/srocc', 
                                     mode='max', 
                                     save_top_k=1,
                                     save_weights_only=True,
                                     verbose=False)
 
-MyEarlyStopping = EarlyStopping(monitor = "val_srocc", 
+MyEarlyStopping = EarlyStopping(monitor = "val/srocc", 
                                 mode = "max",
                                 patience = 15,
                                 verbose = True)
@@ -390,18 +394,19 @@ MyEarlyStopping = EarlyStopping(monitor = "val_srocc",
 trainer = pl.Trainer(
     logger=wandb_logger,
     max_epochs=100,
-    accelerator='gpi',
+    accelerator='gpu',
     devices=[device_idx],
     callbacks=[MyEarlyStopping, MyModelCheckpoint],
     log_every_n_steps=1,
 )
 
-model = Model(saliency_flg=True)
+model = Model(saliency_flg=use_saliency)
 
 # %%
 trainer.fit(model, loader_train, loader_valid)
 
 # %%
-trainer.validate(model, loader_test_clive)
+# trainer.validate(model, loader_test_clive)
+# trainer.validate(model, loader_test_clive)
 
 
