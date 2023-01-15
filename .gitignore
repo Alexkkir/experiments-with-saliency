@@ -10,3 +10,4 @@ lightning_logs/
 iqa/
 wandb/
 mnist/
+iqa
