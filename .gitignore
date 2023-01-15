@@ -6,3 +6,4 @@
 *.rar
 *.pkl
 checkpoints/*
+lightning_logs/*
