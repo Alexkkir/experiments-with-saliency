@@ -19,6 +19,8 @@ from albumentations.pytorch import ToTensorV2
 import cv2
 from torchvision.datasets import ImageFolder
 from torchsummary import summary
+from pytorch_lightning.loggers import WandbLogger
+import wandb
 
 import numpy as np
 import pandas as pd
@@ -37,14 +39,17 @@ import pathlib
 from pathlib import Path
 import shutil
 from tqdm.auto import tqdm
-import os
+import os, sys
 from collections import defaultdict
 import pickle
+import datetime
 
 from IPython.display import clear_output
 
 sns.set_theme()
 matplotlib.rcParams['figure.figsize'] = (30, 5)
+
+device_idx = int(sys.argv[1])
 
 # %%
 IMAGE_SHAPE = (384, 512)
@@ -72,6 +77,9 @@ class IQADataset(Dataset):
         self.saliency = True if saliency_path is not None else False
 
         df = pd.read_csv(labels_path).astype('float32', errors='ignore')
+        available = os.listdir(images_path)
+        df = df[df.name.isin(available)]
+
         train_size = int(TRAIN_RATIO * len(df))
         train_valid_size = int(TRAIN_VALID_RATIO * len(df))
 
@@ -157,19 +165,28 @@ dataset_valid = IQADataset(
     images_path=DATA_ROOT / 'koniq10k' / 'images',
     labels_path=DATA_ROOT / 'koniq_data.csv', 
     saliency_path=DATA_ROOT / 'koniq10k' / 'saliency_maps',
+    mode='valid', 
+    transforms=transforms)
+
+dataset_test_koniq = IQADataset(
+    images_path=DATA_ROOT / 'koniq10k' / 'images',
+    labels_path=DATA_ROOT / 'koniq_data.csv', 
+    saliency_path=DATA_ROOT / 'koniq10k' / 'saliency_maps',
     mode='test', 
     transforms=transforms)
 
-dataset_test = IQADataset(
+dataset_test_clive = IQADataset(
     images_path=DATA_ROOT / 'CLIVE' / 'images',
     labels_path=DATA_ROOT / 'clive_data.csv',
     saliency_path=DATA_ROOT / 'CLIVE' / 'saliency_maps',
     mode='all', 
     transforms=transforms)
 
+
 loader_train = DataLoader(dataset_train, batch_size=16, shuffle=True, num_workers=16)
 loader_valid = DataLoader(dataset_valid, batch_size=16, shuffle=False, num_workers=16)
-loader_test = DataLoader(dataset_test, batch_size=16, shuffle=False, num_workers=16)
+loader_test_koniq = DataLoader(dataset_test_koniq, batch_size=16, shuffle=False, num_workers=16)
+loader_test_clive = DataLoader(dataset_test_clive, batch_size=16, shuffle=False, num_workers=16)
 
 # %%
 batch = next(iter(loader_train))
@@ -180,7 +197,11 @@ batch = next(iter(loader_valid))
 lib.display_batch(batch, 'subj_mean')
 
 # %%
-batch = next(iter(loader_test))
+batch = next(iter(loader_test_koniq))
+lib.display_batch(batch, 'subj_mean')
+
+# %%
+batch = next(iter(loader_test_clive))
 lib.display_batch(batch, 'subj_mean')
 
 # %%
@@ -206,13 +227,12 @@ class LinearBlock(nn.Module):
         return self.layers(x)
 
 class Model(pl.LightningModule):
-    def __init__(self):
+    def __init__(self, saliency_flg, alpha_sal=0.2):
         super().__init__()
 
         backbone = torchvision.models.efficientnet_b2(weights=torchvision.models.EfficientNet_B2_Weights.IMAGENET1K_V1)
         backbone = list(backbone.children())[:-2]
         backbone = nn.Sequential(*backbone)
-        backbone[0][8][2].inplace = False
         self.backbone = backbone
         
         self.mlp = nn.Sequential(
@@ -225,25 +245,39 @@ class Model(pl.LightningModule):
 
         self.sal_conv = nn.Conv2d(1408, 1, (1, 1), 1, 0)
         self.mse_loss = nn.MSELoss()
-        self.alpha_sal = 0.2
+        self.alpha_sal = alpha_sal if saliency_flg is True else 0
+        self.saliency_flg = saliency_flg
 
     def saliency_loss(self, pred, y):
-        return ((pred / pred.mean() - y / y.mean()) ** 2).mean()
+        pred = pred / pred.mean()
+        y = y / y.mean()
+        return ((pred - y) ** 2).mean()
 
     def forward(self, x):
         x = self.backbone(x)
-        saliency = self.sal_conv(x)
-        x = saliency * x # fusion
+        if self.saliency_flg:
+            saliency = self.sal_conv(x)
+            x = saliency * x # fusion
         x = self.mlp(x)
-        return x, saliency
+
+        if self.saliency_flg:
+            return x, saliency
+        else:
+            return x
 
     def training_step(self, batch, batch_idx):
         """the full training loop"""
         x, sal_target, y = batch['image'], batch['saliency'], batch['subj_mean']
-        pred, sal_pred = self(x)
+
+        if self.saliency_flg:
+            pred, sal_pred = self(x)
+        else:
+            pred = self(x)
         pred = pred.flatten()
 
-        loss = self.mse_loss(pred, y) * (1 - self.alpha_sal) + self.saliency_loss(sal_pred, sal_target) * self.alpha_sal
+        loss = self.mse_loss(pred, y) * (1 - self.alpha_sal)
+        if self.saliency_flg:
+            loss += self.saliency_loss(sal_pred, sal_target) * self.alpha_sal
 
         true = y.detach().cpu().numpy()
         pred = pred.detach().cpu().numpy()
@@ -253,10 +287,16 @@ class Model(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         """the full validation loop"""
         x, sal_target, y = batch['image'], batch['saliency'], batch['subj_mean']
-        pred, sal_pred = self(x)
+
+        if self.saliency_flg:
+            pred, sal_pred = self(x)
+        else:
+            pred = self(x)
         pred = pred.flatten()
-        
-        loss = self.mse_loss(pred, y) * (1 - self.alpha_sal) + self.saliency_loss(sal_pred, sal_target) * self.alpha_sal
+
+        loss = self.mse_loss(pred, y) * (1 - self.alpha_sal)
+        if self.saliency_flg:
+            loss += self.saliency_loss(sal_pred, sal_target) * self.alpha_sal
 
         true = y.detach().cpu().numpy()
         pred = pred.detach().cpu().numpy()
@@ -318,75 +358,50 @@ class Model(pl.LightningModule):
         self.log('val_srocc', srocc, prog_bar=True, on_epoch=True, on_step=False)
 
 # %%
+wandb.init(
+    project='IQA', 
+    name='with saliency',
+    notes='want to repeat experiments several times to get mean result',
+    config={
+        'training_process': 'reduce on platueau by 0.2 + early stopping',
+        'batch_size': 16,
+        'model': 'efficient_b2',
+        'fusion': 'multiplicative',
+        'datasets': ['KonIQ-10k', 'CLIVE'],
+        'train/valid/test split on KonIQ': (0.7, 0.1, 0.2)
+    }
+)
+
+wandb_logger = WandbLogger()
+
 MyModelCheckpoint = ModelCheckpoint(dirpath='checkpoints/',
-                                    filename='{epoch}_{val_srocc:.3f}_{val_plcc:.3f}_{val_loss:.3f}',
+                                    filename=f'date={lib.today()}_' + '{val_srocc:.3f}_{epoch}',
                                     monitor='val_srocc', 
                                     mode='max', 
                                     save_top_k=1,
                                     save_weights_only=True,
                                     verbose=False)
 
-MyEarlyStopping = EarlyStopping(monitor = "val_srocc",
+MyEarlyStopping = EarlyStopping(monitor = "val_srocc", 
                                 mode = "max",
                                 patience = 15,
                                 verbose = True)
 
 trainer = pl.Trainer(
+    logger=wandb_logger,
     max_epochs=100,
-    accelerator='gpu',
-    devices=[0],
+    accelerator='gpi',
+    devices=[device_idx],
     callbacks=[MyEarlyStopping, MyModelCheckpoint],
     log_every_n_steps=1,
 )
 
-model = Model()
-
-# %%
-# summary(model.to(torch.device('cuda')), (3, *IMAGE_SHAPE))
-
-# %%
-# selected_conv = model.backbone[0][3][0].block[1][0]
-# another_conv = model.backbone[0][3][0].block[0][0]
-# selected_conv == another_conv, selected_conv == selected_conv
+model = Model(saliency_flg=True)
 
 # %%
 trainer.fit(model, loader_train, loader_valid)
 
 # %%
-# model.load_state_dict(torch.load('/home/alexkkir/experiments-with-saliency/checkpoints/epoch=50_val_srocc=0.892_val_plcc=0.924_val_loss=31.774.ckpt')['state_dict'])
-# model.eval()
-# clear_output()
-
-# %%
-trainer.validate(model, loader_test)
-
-# %%
-# device = torch.device('cuda:1')
-# model.to(device)
-# model.eval()
-# clear_output()
-
-# %%
-# df = dataset_valid.df.copy().set_index('name')
-# df['pred'] = .0
-# for i, sample in tqdm(enumerate(dataset_valid), total=len(df)):
-#     image = sample['image'].unsqueeze(0).to(device)
-#     name = sample['name']
-#     pred = model(image)
-#     pred = float(pred.detach().cpu())
-#     df.loc[name, 'pred'] = pred
-
-# # %%
-# df.corr('pearson')
-
-# # %%
-# np.mean((df.subj_mean - df.pred).values ** 2)
-
-# # %%
-# plt.figure(figsize=(7, 7))
-# sns.scatterplot(data=df, x='subj_mean', y='pred', s=4)
-
-# # %%
-# df.to_csv('efficient_results.csv')
+trainer.validate(model, loader_test_clive)
 
 

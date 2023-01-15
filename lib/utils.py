@@ -28,6 +28,7 @@ import shutil
 from tqdm.notebook import tqdm
 import os
 from collections import defaultdict
+import datetime
 
 MEAN = np.array([0.485, 0.456, 0.406])
 STD = np.array([0.229, 0.224, 0.225])
@@ -92,3 +93,6 @@ def display_sample(sample, label='subj_mean'):
     ax.imshow(image)
     ax.set_title(label_val, fontsize=20)
     ax.set_axis_off()
+
+def today():
+    return datetime.datetime.now().strftime("%Y-%m-%d_%H:%M")
