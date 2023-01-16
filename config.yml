@@ -1,0 +1,26 @@
+datasets:
+    clive:
+        images: iqa/CLIVE/images
+        saliency: iqa/CLIVE/saliency_maps
+        data: iqa/CLIVE/data.csv
+    koniq10k:
+        images: iqa/CLIVE/images
+        saliency: iqa/CLIVE/saliency_maps
+        data: iqa/CLIVE/data.csv
+    batch_size: 32
+
+image_shape:
+    - 384
+    - 512
+
+saliency_shape:
+    - 12
+    - 18
+
+batch_size: 16
+num_workers: 16
+learning_rate_head: 3.0e-4
+learning_rate_backbone: 3.0e-5
+max_epochs: 100
+saliency: True
+name: exp
