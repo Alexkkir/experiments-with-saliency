@@ -1,37 +1,13 @@
-import torch
-import torchvision
-from torchvision import transforms as T
-from torch.utils.data import Dataset, DataLoader, random_split
-from torch import nn
-import torch.nn.functional as F
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks.early_stopping import EarlyStopping
-from pytorch_lightning.callbacks import ModelCheckpoint
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
-import cv2
-from torchvision.datasets import ImageFolder
-
-import numpy as np
-import pandas as pd
+import yaml
 import matplotlib
 import matplotlib.pyplot as plt
-from math import floor, ceil
-from sklearn.model_selection import train_test_split
-
-import shutil
-import requests
-import functools
-import pathlib
-from pathlib import Path
-import shutil
-from tqdm.notebook import tqdm
-import os
-from collections import defaultdict
+from torch.utils.data import DataLoader
+from math import ceil
+import numpy as np
+import torch
+import cv2
 import datetime
-
-MEAN = np.array([0.485, 0.456, 0.406])
-STD = np.array([0.229, 0.224, 0.225])
+from .constants import MEAN, STD, CONFIG
 
 def display_batch(loader, label='subj_mean', cols=8):
     if isinstance(loader, DataLoader):
@@ -96,3 +72,6 @@ def display_sample(sample, label='subj_mean'):
 
 def today():
     return datetime.datetime.now().strftime("%Y-%m-%d_%H:%M")
+
+def get_default_opts():
+    return yaml.load(open(CONFIG), Loader=yaml.FullLoader)

@@ -4,6 +4,8 @@ from torch import nn
 import torchvision
 from scipy import stats
 import pytorch_lightning as pl
+from .constants import MEAN, STD
+import wandb
 
 class LinearBlock(nn.Module):
     def __init__(self, in_dim, out_dim, dropout, activation=True):
@@ -27,8 +29,10 @@ class LinearBlock(nn.Module):
         return self.layers(x)
 
 class Model(pl.LightningModule):
-    def __init__(self, saliency_flg, alpha_sal=0.2):
+    def __init__(self, opts, validation_batch=None):
         super().__init__()
+
+        self.opts = opts
 
         backbone = torchvision.models.efficientnet_b2(weights=torchvision.models.EfficientNet_B2_Weights.IMAGENET1K_V1)
         backbone = list(backbone.children())[:-2]
@@ -45,9 +49,10 @@ class Model(pl.LightningModule):
 
         self.sal_conv = nn.Conv2d(1408, 1, (1, 1), 1, 0)
         self.mse_loss = nn.MSELoss()
-        self.alpha_sal = alpha_sal if saliency_flg is True else 0
-        self.saliency_flg = saliency_flg
+        self.alpha_sal = opts['alpha_sal'] if opts['saliency'] is True else 0
+        self.use_saliency = opts['saliency']
         self._test_dashboard = 'test'
+        self.validation_batch = validation_batch
 
     def saliency_loss(self, pred, y):
         pred = pred / pred.mean()
@@ -56,12 +61,12 @@ class Model(pl.LightningModule):
 
     def forward(self, x):
         x = self.backbone(x)
-        if self.saliency_flg:
+        if self.use_saliency:
             saliency = self.sal_conv(x)
             x = saliency * x # fusion
         x = self.mlp(x)
 
-        if self.saliency_flg:
+        if self.use_saliency:
             return x, saliency
         else:
             return x
@@ -78,15 +83,15 @@ class Model(pl.LightningModule):
     def _step(self, batch):
         x, sal_target, y = batch['image'], batch['saliency'], batch['subj_mean']
 
-        if self.saliency_flg:
+        if self.use_saliency:
             pred, sal_pred = self(x)
         else:
             pred = self(x)
         pred = pred.flatten()
 
-        loss = self.mse/loss(pred, y) * (1 - self.alpha_sal)
-        if self.saliency_flg:
-            loss += self.saliency/loss(sal_pred, sal_target) * self.alpha_sal
+        loss = self.mse_loss(pred, y) * (1 - self.alpha_sal)
+        if self.use_saliency:
+            loss += self.saliency_loss(sal_pred, sal_target) * self.alpha_sal
 
         true = y.detach().cpu().numpy()
         pred = pred.detach().cpu().numpy()
@@ -101,16 +106,12 @@ class Model(pl.LightningModule):
 
         lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, 
-            mode='max', 
-            factor=0.2, 
-            patience=5, 
-            verbose=True)
+            **self.opts['lr_scheduler']
+        )
             
         lr_dict = {
             "scheduler": lr_scheduler,
-            "interval": "epoch",
-            "frequency": 1,
-            "monitor": "val/srocc"
+            **self.opts['lr_dict']
         } 
 
         return [optimizer], [lr_dict]
@@ -135,6 +136,22 @@ class Model(pl.LightningModule):
         self.log('val/plcc', plcc, prog_bar=True, on_epoch=True, on_step=False)
         self.log('val/srocc', srocc, prog_bar=True, on_epoch=True, on_step=False)
         self.log('val_srocc', srocc, prog_bar=False, on_epoch=True, on_step=False)
+
+        # image = self.validation_batch['image'].permute(0, 2, 3, 1) * STD + MEAN
+        # saliency = self.validation_batch['saliency'].permute(0, 2, 3, 1) * STD + MEAN
+        # images = [wandb.Image((x * 255).numpy().astype('uint8')) for x in images]
+        # saliency = [wandb.Image((x * 255).numpy().astype('uint8')) for x in saliency]
+
+        # data = [
+        #     (wandb.Image((img * 255).numpy().astype('uint8')), wandb.Image((sal * 255).numpy().astype('uint8'))) 
+        #     for img, sal in zip(image, saliency)
+        # ]
+
+        # self.logger.log_table(
+        #     key='sample_table',
+        #     data=data,
+        #     columns=['image', 'saliency']
+        # )
 
     def test_epoch_end(self, outputs):
         """log and display average test loss and accuracy"""

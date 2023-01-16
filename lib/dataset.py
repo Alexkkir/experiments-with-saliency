@@ -19,9 +19,9 @@ class IQADataset(Dataset):
         TRAIN_RATIO = 0.7
         TRAIN_VALID_RATIO = 0.8
 
-        self.images_path = images_path
-        self.labels_path = labels_path
-        self.saliency_path = saliency_path
+        self.images_path = Path(images_path)
+        self.labels_path = Path(labels_path)
+        self.saliency_path = Path(saliency_path)
 
         self.saliency = True if saliency_path is not None else False
 
@@ -84,7 +84,7 @@ class IQADataset(Dataset):
             out['saliency'] = saliency
         return out
 
-def get_loaders(opts):
+def get_datasets(opts):
     transforms = {
         '1_both': A.Compose([
             A.Resize(*opts['image_shape']),
@@ -104,16 +104,16 @@ def get_loaders(opts):
     }
 
     dataset_train = IQADataset(
-        images_path=opts['koniq10k']['images'],
-        saliency_path=opts['koniq10k']['saliency_maps'],
-        labels_path=opts['koniq10k']['data'],
-        mode='train', 
+        images_path=opts['clive']['images'],
+        saliency_path=opts['clive']['saliency_maps'],
+        labels_path=opts['clive']['data'],
+        mode='valid', 
         transforms=transforms)
 
     dataset_valid = IQADataset(
-        images_path=opts['koniq10k']['images'],
-        saliency_path=opts['koniq10k']['saliency_maps'],
-        labels_path=opts['koniq10k']['data'],
+        images_path=opts['clive']['images'],
+        saliency_path=opts['clive']['saliency_maps'],
+        labels_path=opts['clive']['data'],
         mode='valid', 
         transforms=transforms)
 
@@ -131,9 +131,17 @@ def get_loaders(opts):
         mode='all', 
         transforms=transforms)
 
+    return dict(
+        dataset_train=dataset_train,
+        dataset_valid=dataset_valid,
+        dataset_test_koniq=dataset_test_koniq,
+        dataset_test_clive=dataset_test_clive
+    )
 
-    loader_train = DataLoader(dataset_train, batch_size=opts['batch_size'], shuffle=True, num_workers=opts['num_workers'])
-    loader_valid = DataLoader(dataset_valid, batch_size=opts['batch_size'], shuffle=False, num_workers=opts['num_workers'])
-    loader_test_koniq = DataLoader(dataset_test_koniq, batch_size=opts['batch_size'], shuffle=False, num_workers=opts['num_workers'])
-    loader_test_clive = DataLoader(dataset_test_clive, batch_size=opts['batch_size'], shuffle=False, num_workers=opts['num_workers'])
+def get_loaders(opts):
+    datasets = get_datasets(opts)
+    loader_train = DataLoader(datasets['dataset_train'], batch_size=opts['batch_size'], shuffle=True, num_workers=opts['num_workers'])
+    loader_valid = DataLoader(datasets['dataset_valid'], batch_size=opts['batch_size'], shuffle=False, num_workers=opts['num_workers'])
+    loader_test_koniq = DataLoader(datasets['dataset_test_koniq'], batch_size=opts['batch_size'], shuffle=False, num_workers=opts['num_workers'])
+    loader_test_clive = DataLoader(datasets['dataset_test_clive'], batch_size=opts['batch_size'], shuffle=False, num_workers=opts['num_workers'])
     return loader_train, loader_valid, loader_test_koniq, loader_test_clive
