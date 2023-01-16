@@ -6,6 +6,7 @@ from scipy import stats
 import pytorch_lightning as pl
 from .constants import MEAN, STD
 import wandb
+from torchvision.transforms.functional import resize
 
 class LinearBlock(nn.Module):
     def __init__(self, in_dim, out_dim, dropout, activation=True):
@@ -137,21 +138,33 @@ class Model(pl.LightningModule):
         self.log('val/srocc', srocc, prog_bar=True, on_epoch=True, on_step=False)
         self.log('val_srocc', srocc, prog_bar=False, on_epoch=True, on_step=False)
 
-        # image = self.validation_batch['image'].permute(0, 2, 3, 1) * STD + MEAN
-        # saliency = self.validation_batch['saliency'].permute(0, 2, 3, 1) * STD + MEAN
-        # images = [wandb.Image((x * 255).numpy().astype('uint8')) for x in images]
-        # saliency = [wandb.Image((x * 255).numpy().astype('uint8')) for x in saliency]
+        # log saliency maps
+        if self.use_saliency:
+            images = self.validation_batch['image'][:8] 
+            shape = images.shape[-2:]
 
-        # data = [
-        #     (wandb.Image((img * 255).numpy().astype('uint8')), wandb.Image((sal * 255).numpy().astype('uint8'))) 
-        #     for img, sal in zip(image, saliency)
-        # ]
+            saliency = self.validation_batch['saliency'][:8]
+            saliency = torch.concat([saliency] * 3, dim=1)
 
-        # self.logger.log_table(
-        #     key='sample_table',
-        #     data=data,
-        #     columns=['image', 'saliency']
-        # )
+            _, saliency_pred = self(images.to(torch.device(f'cuda:{self.trainer.device_ids[0]}')))
+            saliency_pred = saliency_pred.detach().cpu()
+            saliency_pred = torch.concat([saliency_pred] * 3, dim=1)
+
+            saliency = resize(saliency, shape)
+            saliency_pred = resize(saliency_pred, shape)
+
+            images = images.permute(0, 2, 3, 1) * STD + MEAN
+            images = images.permute(0, 3, 1, 2)
+
+            saliency_pred = (saliency_pred - saliency_pred.min()) / (saliency_pred.max() - saliency_pred.min())
+
+            grid = torchvision.utils.make_grid(torch.concat([saliency, images, saliency_pred])).permute(1, 2, 0)
+            grid = wandb.Image(grid.numpy())
+            self.logger.log_image(
+                key='grid with sal maps',
+                images=[grid]
+            )
+
 
     def test_epoch_end(self, outputs):
         """log and display average test loss and accuracy"""

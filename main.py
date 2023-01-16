@@ -50,11 +50,11 @@ def main():
 
     trainer.fit(model, loader_train, loader_valid)
 
-    # model._test_dashboard = 'test_koniq'
-    # trainer.test(model, loader_test_koniq)
+    model._test_dashboard = 'test_koniq'
+    trainer.test(model, loader_test_koniq)
 
-    # model._test_dashboard = 'test_clive'
-    # trainer.test(model, loader_test_clive)
+    model._test_dashboard = 'test_clive'
+    trainer.test(model, loader_test_clive)
 
 if __name__ == '__main__':
     main()

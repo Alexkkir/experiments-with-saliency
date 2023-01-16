@@ -104,16 +104,16 @@ def get_datasets(opts):
     }
 
     dataset_train = IQADataset(
-        images_path=opts['clive']['images'],
-        saliency_path=opts['clive']['saliency_maps'],
-        labels_path=opts['clive']['data'],
-        mode='valid', 
+        images_path=opts['koniq10k']['images'],
+        saliency_path=opts['koniq10k']['saliency_maps'],
+        labels_path=opts['koniq10k']['data'],
+        mode='train', 
         transforms=transforms)
 
     dataset_valid = IQADataset(
-        images_path=opts['clive']['images'],
-        saliency_path=opts['clive']['saliency_maps'],
-        labels_path=opts['clive']['data'],
+        images_path=opts['koniq10k']['images'],
+        saliency_path=opts['koniq10k']['saliency_maps'],
+        labels_path=opts['koniq10k']['data'],
         mode='valid', 
         transforms=transforms)
 
