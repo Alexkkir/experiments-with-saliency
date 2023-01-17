@@ -21,23 +21,26 @@ learning_rate_head: 3.0e-4
 learning_rate_backbone: 3.0e-5
 max_epochs: 100
 
-model_checkoint:
+model_checkoint_best:
     monitor: val_srocc
     mode: max
     save_top_k: 1
     save_weights_only: True
     verbose: True
 
+model_checkoint_last:
+    save_weights_only: True
+    verbose: True
+
 early_stopping:
     monitor: val_srocc
     mode: max
-    patience: 15
+    patience: 8
     verbose: True
 
 lr_scheduler:
-    mode: max 
-    factor: 0.2 
-    patience: 5 
+    step_size: 7
+    gamma: 0.1
     verbose: True
 
 alpha_sal: 0.2
@@ -45,4 +48,4 @@ alpha_sal: 0.2
 lr_dict:
     interval: epoch
     frequency: 1
-    monitor: val/srocc
+    # monitor: val/srocc

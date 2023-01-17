@@ -8,6 +8,7 @@ from .constants import MEAN, STD
 import wandb
 from torchvision.transforms.functional import resize
 
+
 class LinearBlock(nn.Module):
     def __init__(self, in_dim, out_dim, dropout, activation=True):
         super().__init__()
@@ -29,17 +30,19 @@ class LinearBlock(nn.Module):
     def forward(self, x):
         return self.layers(x)
 
+
 class Model(pl.LightningModule):
     def __init__(self, opts, validation_batch=None):
         super().__init__()
 
         self.opts = opts
 
-        backbone = torchvision.models.efficientnet_b2(weights=torchvision.models.EfficientNet_B2_Weights.IMAGENET1K_V1)
+        backbone = torchvision.models.efficientnet_b2(
+            weights=torchvision.models.EfficientNet_B2_Weights.IMAGENET1K_V1)
         backbone = list(backbone.children())[:-2]
         backbone = nn.Sequential(*backbone)
         self.backbone = backbone
-        
+
         self.mlp = nn.Sequential(
             nn.AdaptiveAvgPool2d((1, 1)),
             nn.Flatten(),
@@ -64,7 +67,7 @@ class Model(pl.LightningModule):
         x = self.backbone(x)
         if self.use_saliency:
             saliency = self.sal_conv(x)
-            x = saliency * x # fusion
+            x = saliency * x  # fusion
         x = self.mlp(x)
 
         if self.use_saliency:
@@ -74,7 +77,7 @@ class Model(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         return self._step(batch)
-    
+
     def validation_step(self, batch, batch_idx):
         return self._step(batch)
 
@@ -105,15 +108,15 @@ class Model(pl.LightningModule):
             {'params': self.mlp.parameters(), 'lr': 3e-4}
         ], weight_decay=3e-4)
 
-        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, 
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer,
             **self.opts['lr_scheduler']
         )
-            
+
         lr_dict = {
             "scheduler": lr_scheduler,
             **self.opts['lr_dict']
-        } 
+        }
 
         return [optimizer], [lr_dict]
 
@@ -121,32 +124,40 @@ class Model(pl.LightningModule):
         """log and display average test loss and accuracy"""
         loss, plcc, srocc = self._epoch_end(outputs)
 
-        self.print(f"| TRAIN plcc: {plcc:.2f}, srocc: {srocc:.2f}, loss: {loss:.2f}" )
+        self.print(
+            f"| TRAIN plcc: {plcc:.2f}, srocc: {srocc:.2f}, loss: {loss:.2f}")
 
-        self.log('train/loss', loss, prog_bar=True, on_epoch=True, on_step=False)
-        self.log('train/plcc', plcc, prog_bar=True, on_epoch=True, on_step=False)
-        self.log('train/srocc', srocc, prog_bar=True, on_epoch=True, on_step=False)
+        self.log('train/srocc', srocc, prog_bar=True,
+                 on_epoch=True, on_step=False)
+        self.log('train/plcc', plcc, prog_bar=True,
+                 on_epoch=True, on_step=False)
+        self.log('train/loss', loss, prog_bar=True,
+                 on_epoch=True, on_step=False)
 
     def validation_epoch_end(self, outputs):
         """log and display average val loss and accuracy"""
         loss, plcc, srocc = self._epoch_end(outputs)
 
-        self.print(f"[Epoch {self.trainer.current_epoch:3}] VALID plcc: {plcc:.2f}, srocc: {srocc:.2f}, loss: {loss:.2f}", end= " ")
+        self.print(
+            f"[Epoch {self.trainer.current_epoch:3}] VALID plcc: {plcc:.2f}, srocc: {srocc:.2f}, loss: {loss:.2f}", end=" ")
 
-        self.log('val/loss', loss, prog_bar=True, on_epoch=True, on_step=False)
+        self.log('val/srocc', srocc, prog_bar=True,
+                 on_epoch=True, on_step=False)
         self.log('val/plcc', plcc, prog_bar=True, on_epoch=True, on_step=False)
-        self.log('val/srocc', srocc, prog_bar=True, on_epoch=True, on_step=False)
-        self.log('val_srocc', srocc, prog_bar=False, on_epoch=True, on_step=False)
+        self.log('val/loss', loss, prog_bar=True, on_epoch=True, on_step=False)
+        self.log('val_srocc', srocc, prog_bar=False,
+                 on_epoch=True, on_step=False)
 
         # log saliency maps
         if self.use_saliency:
-            images = self.validation_batch['image'][:8] 
+            N = 8
+            images = self.validation_batch['image'][:N]
             shape = images.shape[-2:]
 
-            saliency = self.validation_batch['saliency'][:8]
+            saliency = self.validation_batch['saliency'][:N]
             saliency = torch.concat([saliency] * 3, dim=1)
 
-            _, saliency_pred = self(images.to(torch.device(f'cuda:{self.trainer.device_ids[0]}')))
+            _, saliency_pred = self(images.to(self.device))
             saliency_pred = saliency_pred.detach().cpu()
             saliency_pred = torch.concat([saliency_pred] * 3, dim=1)
 
@@ -156,29 +167,34 @@ class Model(pl.LightningModule):
             images = images.permute(0, 2, 3, 1) * STD + MEAN
             images = images.permute(0, 3, 1, 2)
 
-            saliency_pred = (saliency_pred - saliency_pred.min()) / (saliency_pred.max() - saliency_pred.min())
+            for i in range(N):
+                saliency_pred[i] = (saliency_pred[i] - saliency_pred[i].min()) / \
+                    (saliency_pred[i].max() - saliency_pred[i].min())
 
-            grid = torchvision.utils.make_grid(torch.concat([saliency, images, saliency_pred])).permute(1, 2, 0)
+            grid = torchvision.utils.make_grid(torch.concat(
+                [saliency, images, saliency_pred])).permute(1, 2, 0)
             grid = wandb.Image(grid.numpy())
             self.logger.log_image(
                 key='grid with sal maps',
                 images=[grid]
             )
 
-
     def test_epoch_end(self, outputs):
         """log and display average test loss and accuracy"""
         loss, plcc, srocc = self._epoch_end(outputs)
 
-        self.log(f'{self._test_dashboard}/loss', loss, prog_bar=True, on_epoch=True, on_step=False)
-        self.log(f'{self._test_dashboard}/plcc', plcc, prog_bar=True, on_epoch=True, on_step=False)
-        self.log(f'{self._test_dashboard}/srocc', srocc, prog_bar=True, on_epoch=True, on_step=False)
+        self.log(f'{self._test_dashboard}/loss', loss,
+                 prog_bar=True, on_epoch=True, on_step=False)
+        self.log(f'{self._test_dashboard}/plcc', plcc,
+                 prog_bar=True, on_epoch=True, on_step=False)
+        self.log(f'{self._test_dashboard}/srocc', srocc,
+                 prog_bar=True, on_epoch=True, on_step=False)
 
     def _epoch_end(self, outputs):
         loss = torch.stack([x['loss'] for x in outputs]).mean()
         true = np.concatenate([x['results'][0] for x in outputs])
         predicted = np.concatenate([x['results'][1] for x in outputs])
-        
+
         plcc = stats.pearsonr(predicted, true)[0]
         srocc = stats.spearmanr(predicted, true)[0]
         return loss, plcc, srocc

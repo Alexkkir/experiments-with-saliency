@@ -9,7 +9,7 @@ from albumentations.pytorch import ToTensorV2
 
 
 class IQADataset(Dataset):
-    def __init__(self, images_path, labels_path, mode, saliency_path=None, transforms=None):
+    def __init__(self, images_path, labels_path, mode, saliency_path=None, augment=True, transforms=None):
         assert isinstance(images_path, str) or isinstance(images_path, Path)
         assert isinstance(labels_path, str) or isinstance(labels_path, Path)
         assert saliency_path is None or isinstance(saliency_path, str) or isinstance(saliency_path, Path)
@@ -44,6 +44,7 @@ class IQADataset(Dataset):
             self.df = df
 
         self.transforms = transforms
+        self.augment = augment
         self.file2suffix_saliency = {Path(file).with_suffix(''): Path(file).suffix for file in os.listdir(saliency_path)}
 
     def __len__(self):
@@ -71,7 +72,8 @@ class IQADataset(Dataset):
             image = np.dstack([image, saliency])
 
             # second stage: augmentations (hflip, rotate)
-            image = self.transforms['2_both'](image=image)['image']
+            if self.augment:
+                image = self.transforms['2_both'](image=image)['image']
 
             # third stage: postprocessing (normalization, to_tensor)
             image, saliency = image[..., :NUM_CHANNELS], image[..., NUM_CHANNELS:]
@@ -84,7 +86,7 @@ class IQADataset(Dataset):
             out['saliency'] = saliency
         return out
 
-def get_datasets(opts):
+def get_datasets(opts, fast=False):
     transforms = {
         '1_both': A.Compose([
             A.Resize(*opts['image_shape']),
@@ -102,34 +104,70 @@ def get_datasets(opts):
             ToTensorV2(),
         ])
     }
+    if not fast:
+        dataset_train = IQADataset(
+            images_path=opts['koniq10k']['images'],
+            saliency_path=opts['koniq10k']['saliency_maps'],
+            labels_path=opts['koniq10k']['data'],
+            mode='train', 
+            augment=True,
+            transforms=transforms)
 
-    dataset_train = IQADataset(
-        images_path=opts['koniq10k']['images'],
-        saliency_path=opts['koniq10k']['saliency_maps'],
-        labels_path=opts['koniq10k']['data'],
-        mode='train', 
-        transforms=transforms)
+        dataset_valid = IQADataset(
+            images_path=opts['koniq10k']['images'],
+            saliency_path=opts['koniq10k']['saliency_maps'],
+            labels_path=opts['koniq10k']['data'],
+            mode='valid', 
+            augment=False,
+            transforms=transforms)
 
-    dataset_valid = IQADataset(
-        images_path=opts['koniq10k']['images'],
-        saliency_path=opts['koniq10k']['saliency_maps'],
-        labels_path=opts['koniq10k']['data'],
-        mode='valid', 
-        transforms=transforms)
+        dataset_test_koniq = IQADataset(
+            images_path=opts['koniq10k']['images'],
+            saliency_path=opts['koniq10k']['saliency_maps'],
+            labels_path=opts['koniq10k']['data'],
+            mode='test', 
+            augment=False,
+            transforms=transforms)
 
-    dataset_test_koniq = IQADataset(
-        images_path=opts['koniq10k']['images'],
-        saliency_path=opts['koniq10k']['saliency_maps'],
-        labels_path=opts['koniq10k']['data'],
-        mode='test', 
-        transforms=transforms)
+        dataset_test_clive = IQADataset(
+            images_path=opts['clive']['images'],
+            saliency_path=opts['clive']['saliency_maps'],
+            labels_path=opts['clive']['data'],
+            mode='all', 
+            augment=False,
+            transforms=transforms)
+    else:
+        dataset_train = IQADataset(
+            images_path=opts['clive']['images'],
+            saliency_path=opts['clive']['saliency_maps'],
+            labels_path=opts['clive']['data'],
+            mode='valid', 
+            augment=True,
+            transforms=transforms)
 
-    dataset_test_clive = IQADataset(
-        images_path=opts['clive']['images'],
-        saliency_path=opts['clive']['saliency_maps'],
-        labels_path=opts['clive']['data'],
-        mode='all', 
-        transforms=transforms)
+        dataset_valid = IQADataset(
+            images_path=opts['clive']['images'],
+            saliency_path=opts['clive']['saliency_maps'],
+            labels_path=opts['clive']['data'],
+            mode='test', 
+            augment=False,
+            transforms=transforms)
+
+        dataset_test_koniq = IQADataset(
+            images_path=opts['clive']['images'],
+            saliency_path=opts['clive']['saliency_maps'],
+            labels_path=opts['clive']['data'],
+            mode='test', 
+            augment=False,
+            transforms=transforms)
+
+        dataset_test_clive = IQADataset(
+            images_path=opts['clive']['images'],
+            saliency_path=opts['clive']['saliency_maps'],
+            labels_path=opts['clive']['data'],
+            mode='all', 
+            augment=False,
+            transforms=transforms)
 
     return dict(
         dataset_train=dataset_train,
@@ -138,8 +176,8 @@ def get_datasets(opts):
         dataset_test_clive=dataset_test_clive
     )
 
-def get_loaders(opts):
-    datasets = get_datasets(opts)
+def get_loaders(opts, fast=False):
+    datasets = get_datasets(opts, fast)
     loader_train = DataLoader(datasets['dataset_train'], batch_size=opts['batch_size'], shuffle=True, num_workers=opts['num_workers'])
     loader_valid = DataLoader(datasets['dataset_valid'], batch_size=opts['batch_size'], shuffle=False, num_workers=opts['num_workers'])
     loader_test_koniq = DataLoader(datasets['dataset_test_koniq'], batch_size=opts['batch_size'], shuffle=False, num_workers=opts['num_workers'])

@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-python main.py --name run-with-grid --saliency 1 --device 3
+python main.py --name checking --saliency 0 --device 3

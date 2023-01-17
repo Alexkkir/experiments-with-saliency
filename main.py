@@ -24,13 +24,13 @@ def main():
 
     model = lib.Model(opts, validation_batch=next(iter(loader_valid)))
 
-    wandb.init(
-        project='IQA', 
-        name=opts['name'],
-        config=opts
-    )
+    # wandb.init(
+    #     project='IQA', 
+    #     name=opts['name'],
+    #     config=opts
+    # )
 
-    wandb_logger = WandbLogger()
+    # wandb_logger = WandbLogger()
 
     MyModelCheckpoint = ModelCheckpoint(
         dirpath=f"checkpoints/{opts['name']}/",
@@ -40,8 +40,8 @@ def main():
     MyEarlyStopping = EarlyStopping(**opts['early_stopping'])
 
     trainer = pl.Trainer(
-        logger=wandb_logger,
-        max_epochs=100,
+        # logger=wandb_logger,
+        max_epochs=20,
         accelerator='gpu',
         devices=[opts['device']],
         callbacks=[MyEarlyStopping, MyModelCheckpoint],
