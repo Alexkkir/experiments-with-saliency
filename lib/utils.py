@@ -7,7 +7,12 @@ import numpy as np
 import torch
 import cv2
 import datetime
+from argparse import ArgumentParser
+import json
+
 from .constants import MEAN, STD, CONFIG
+
+
 
 def display_batch(loader, label='subj_mean', cols=8):
     if isinstance(loader, DataLoader):
@@ -75,3 +80,29 @@ def today():
 
 def get_default_opts():
     return yaml.load(open(CONFIG), Loader=yaml.FullLoader)
+
+def get_args():
+    parser = ArgumentParser()
+
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--sal', dest='saliency', action='store_true')
+    group.add_argument('--no-sal', dest='saliency', action='store_false')
+    group.set_defaults(saliency=True)    
+    
+    parser.add_argument('--name', type=str, required=True, help='name of experiment')
+    parser.add_argument('--device', type=int, required=True, help='index of cuda device')
+
+    parser.add_argument('--wandb', action='store_true')
+    parser.add_argument('--no-wandb', dest='wandb', action='store_false')
+    parser.set_defaults(wandb=True)
+
+    parser.add_argument('--vis-sal', dest='visualize_saliency', action='store_true')
+    parser.set_defaults(visualize_saliency=False)
+    
+    args = parser.parse_args()
+    opts = vars(args)
+    print(json.dumps(opts, indent=4))
+    
+    opts.update(get_default_opts())
+
+    return opts
