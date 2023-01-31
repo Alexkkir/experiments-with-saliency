@@ -55,7 +55,7 @@ class Model(pl.LightningModule):
         self.mse_loss = nn.MSELoss()
         self.alpha_sal = opts['alpha_sal'] if opts['saliency'] is True else 0
         self.use_saliency = opts['saliency']
-        self._test_dashboard = 'test'
+        self.test_dashboard = 'test'
         self.validation_batch = validation_batch
 
     def saliency_loss(self, pred, y):
@@ -149,7 +149,7 @@ class Model(pl.LightningModule):
                  on_epoch=True, on_step=False)
 
         # log saliency maps
-        if self.use_saliency:
+        if self.opts['visualize_saliency']:
             N = 8
             images = self.validation_batch['image'][:N]
             shape = images.shape[-2:]
@@ -183,11 +183,11 @@ class Model(pl.LightningModule):
         """log and display average test loss and accuracy"""
         loss, plcc, srocc = self._epoch_end(outputs)
 
-        self.log(f'{self._test_dashboard}/loss', loss,
+        self.log(f'{self.test_dashboard}/loss', loss,
                  prog_bar=True, on_epoch=True, on_step=False)
-        self.log(f'{self._test_dashboard}/plcc', plcc,
+        self.log(f'{self.test_dashboard}/plcc', plcc,
                  prog_bar=True, on_epoch=True, on_step=False)
-        self.log(f'{self._test_dashboard}/srocc', srocc,
+        self.log(f'{self.test_dashboard}/srocc', srocc,
                  prog_bar=True, on_epoch=True, on_step=False)
 
     def _epoch_end(self, outputs):

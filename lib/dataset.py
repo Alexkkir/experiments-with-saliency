@@ -170,16 +170,17 @@ def get_datasets(opts, fast=False):
             transforms=transforms)
 
     return dict(
-        dataset_train=dataset_train,
-        dataset_valid=dataset_valid,
-        dataset_test_koniq=dataset_test_koniq,
-        dataset_test_clive=dataset_test_clive
+        train=dataset_train,
+        valid=dataset_valid,
+        test_koniq=dataset_test_koniq,
+        test_clive=dataset_test_clive
     )
 
 def get_loaders(opts, fast=False):
     datasets = get_datasets(opts, fast)
-    loader_train = DataLoader(datasets['dataset_train'], batch_size=opts['batch_size'], shuffle=True, num_workers=opts['num_workers'])
-    loader_valid = DataLoader(datasets['dataset_valid'], batch_size=opts['batch_size'], shuffle=False, num_workers=opts['num_workers'])
-    loader_test_koniq = DataLoader(datasets['dataset_test_koniq'], batch_size=opts['batch_size'], shuffle=False, num_workers=opts['num_workers'])
-    loader_test_clive = DataLoader(datasets['dataset_test_clive'], batch_size=opts['batch_size'], shuffle=False, num_workers=opts['num_workers'])
-    return loader_train, loader_valid, loader_test_koniq, loader_test_clive
+    loaders = {}
+    loaders['train'] = DataLoader(datasets['train'], batch_size=opts['batch_size'], shuffle=True, num_workers=opts['num_workers'])
+    loaders['valid'] = DataLoader(datasets['valid'], batch_size=opts['batch_size'], shuffle=False, num_workers=opts['num_workers'])
+    loaders['test_koniq'] = DataLoader(datasets['test_koniq'], batch_size=opts['batch_size'], shuffle=False, num_workers=opts['num_workers'])
+    loaders['test_clive'] = DataLoader(datasets['test_clive'], batch_size=opts['batch_size'], shuffle=False, num_workers=opts['num_workers'])
+    return loaders
