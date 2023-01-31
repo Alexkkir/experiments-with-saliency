@@ -30,18 +30,18 @@ def main():
     CheckpointLast = ModelCheckpoint(
         dirpath=f"checkpoints/{opts['name']}/",
         filename=f'last_date={lib.today()}_' + '{val_srocc:.3f}_{epoch}',
-        **opts['model_checkoint_last'])
+        **opts['model_checkpoint_last'])
 
     CheckpointBest = ModelCheckpoint(
         dirpath=f"checkpoints/{opts['name']}/",
         filename=f'best_date={lib.today()}_' + '{val_srocc:.3f}_{epoch}',
-        **opts['model_checkoint_best'])
+        **opts['model_checkpoint_best'])
 
     MyEarlyStopping = EarlyStopping(**opts['early_stopping'])
 
     trainer = pl.Trainer(
         logger=logger,
-        max_epochs=20,
+        max_epochs=opts['max_epochs'],
         accelerator='gpu',
         devices=[opts['device']],
         callbacks=[MyEarlyStopping, CheckpointLast, CheckpointBest],
@@ -49,12 +49,14 @@ def main():
     )
 
     trainer.fit(model, loaders['train'], loaders['valid'])
+    print(CheckpointBest.)
+    print(CheckpointLast.best_model_path)
 
     model.test_dashboard = 'test_koniq_best'
-    trainer.test(ckpt_path='best', dataloaders=loaders['train_koniq'])
+    trainer.test(ckpt_path='best', dataloaders=loaders['test_koniq'])
 
     model.test_dashboard = 'test_koniq_last'
-    trainer.test(ckpt_path='last', dataloaders=loaders['train_koniq'])
+    trainer.test(ckpt_path='last', dataloaders=loaders['test_koniq'])
 
     model.test_dashboard = 'test_clive_best'
     trainer.test(ckpt_path='best', dataloaders=loaders['test_clive'])

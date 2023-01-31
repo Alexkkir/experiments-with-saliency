@@ -19,16 +19,16 @@ batch_size: 16
 num_workers: 16
 learning_rate_head: 3.0e-4
 learning_rate_backbone: 3.0e-5
-max_epochs: 30
+max_epochs: 2
 
-model_checkoint_best:
+model_checkpoint_best:
     monitor: val_srocc
     mode: max
     save_top_k: 1
     save_weights_only: True
     verbose: True
 
-model_checkoint_last:
+model_checkpoint_last:
     save_weights_only: True
     verbose: True
 
