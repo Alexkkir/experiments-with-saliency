@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-python main.py --name checking --saliency 0 --device 3
+python main.py --sal --name "sal refactored 2" --device 0

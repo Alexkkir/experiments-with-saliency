@@ -1,5 +1,4 @@
 import lib
-import yaml
 import os, sys
 import wandb
 
@@ -11,7 +10,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 def main():
     opts = lib.get_args()
 
-    loaders = lib.get_loaders(opts, fast=True)
+    loaders = lib.get_loaders(opts, fast=False)
     validation_batch = next(iter(loaders['valid']))
 
     model = lib.Model(opts, validation_batch=validation_batch)
@@ -49,20 +48,21 @@ def main():
     )
 
     trainer.fit(model, loaders['train'], loaders['valid'])
-    print(CheckpointBest.)
-    print(CheckpointLast.best_model_path)
+
+    path_best = CheckpointBest.best_model_path
+    path_last = CheckpointLast.best_model_path
 
     model.test_dashboard = 'test_koniq_best'
-    trainer.test(ckpt_path='best', dataloaders=loaders['test_koniq'])
+    trainer.test(ckpt_path=path_best, dataloaders=loaders['test_koniq'])
 
     model.test_dashboard = 'test_koniq_last'
-    trainer.test(ckpt_path='last', dataloaders=loaders['test_koniq'])
+    trainer.test(ckpt_path=path_last, dataloaders=loaders['test_koniq'])
 
     model.test_dashboard = 'test_clive_best'
-    trainer.test(ckpt_path='best', dataloaders=loaders['test_clive'])
+    trainer.test(ckpt_path=path_best, dataloaders=loaders['test_clive'])
 
     model.test_dashboard = 'test_clive_last'
-    trainer.test(ckpt_path='last', dataloaders=loaders['test_clive'])
+    trainer.test(ckpt_path=path_last, dataloaders=loaders['test_clive'])
 
 if __name__ == '__main__':
     main()
