@@ -20,6 +20,9 @@ batch_size: 16
 num_workers: 16
 learning_rate_head: 3.0e-4
 learning_rate_backbone: 3.0e-5
+alpha_sal: 0.2
+
+saliency_type: mult
 
 model_checkpoint_best:
     monitor: val_srocc
@@ -43,7 +46,6 @@ lr_scheduler:
     gamma: 0.1
     verbose: True
 
-alpha_sal: 0.2
 
 lr_dict:
     interval: epoch
