@@ -36,14 +36,14 @@ def main():
         filename=f'best_date={lib.today()}_' + '{val_srocc:.3f}_{epoch}',
         **opts['model_checkpoint_best'])
 
-    MyEarlyStopping = EarlyStopping(**opts['early_stopping'])
+    # MyEarlyStopping = EarlyStopping(**opts['early_stopping'])
 
     trainer = pl.Trainer(
         logger=logger,
         max_epochs=opts['max_epochs'],
         accelerator='gpu',
         devices=[opts['device']],
-        callbacks=[MyEarlyStopping, CheckpointLast, CheckpointBest],
+        callbacks=[CheckpointLast, CheckpointBest],
         log_every_n_steps=1,
     )
 
