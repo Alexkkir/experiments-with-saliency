@@ -37,11 +37,9 @@ class Model(pl.LightningModule):
 
         self.opts = opts
 
-        backbone = torchvision.models.efficientnet_b2(
-            weights=torchvision.models.EfficientNet_B2_Weights.IMAGENET1K_V1)
-        backbone = list(backbone.children())[:-2]
-        backbone = nn.Sequential(*backbone)
-        self.backbone = backbone
+        self.backbone = torchvision.models.efficientnet_b2(
+            weights=torchvision.models.EfficientNet_B2_Weights.IMAGENET1K_V1).features
+        # TODO: use pretrained weights
 
         self.mlp = nn.Sequential(
             nn.AdaptiveAvgPool2d((1, 1)),
@@ -51,24 +49,37 @@ class Model(pl.LightningModule):
             LinearBlock(256, 1, 0, activation=False)
         )
 
-        N_CHANNELS_IN_LAST_LAYER = 1408
-        self.sal_conv = nn.Conv2d(N_CHANNELS_IN_LAST_LAYER, 1, (1, 1), 1, 0)
         self.mse_loss = nn.MSELoss()
         self.test_dashboard = 'test'
         self.validation_batch = validation_batch
+
+        DEPTHS = [32, 16, 24, 48, 88, 120, 208, 352, 1408]
+        LEN_BACKBONE = len(self.backbone)
+
+        concat_convs = [
+            nn.Conv2d(DEPTHS[i] + 1, DEPTHS[i], 1, 1, 0) for i in range(LEN_BACKBONE)
+        ]
+        self.concat_convs = nn.Sequential(*concat_convs)
 
     def saliency_loss(self, pred, y):
         pred = pred / pred.mean()
         y = y / y.mean()
         return ((pred - y) ** 2).mean()
 
-    def forward(self, x):
-        x = self.backbone(x)
-        saliency = self.sal_conv(x)
-        x = saliency * x  # fusion
-        x = self.mlp(x)
+    def forward(self, x, sal):
+        for i, layer in enumerate(self.backbone): 
+            x = layer(x)
+            x = self._concat_saliency(x, sal, i)
 
-        return x, saliency
+        x = self.mlp(x)
+        return x
+
+    def _concat_saliency(self, x, sal, i):
+        shape = x.shape[2:]
+        sal = resize(sal, shape)
+        x = torch.cat([sal, x], dim=1)
+        x = self.concat_convs[i](x) 
+        return x
 
     def training_step(self, batch, batch_idx):
         return self._step(batch)
@@ -80,14 +91,11 @@ class Model(pl.LightningModule):
         return self._step(batch)
 
     def _step(self, batch):
-        x, sal_target, y = batch['image'], batch['saliency'], batch['subj_mean']
-
-        pred, sal_pred = self(x)
-
+        x, sal, y = batch['image'], batch['saliency'], batch['subj_mean']
+        pred = self(x, sal)
         pred = pred.flatten()
 
-        loss = self.mse_loss(pred, y) * (1 - self.alpha_sal) + self.saliency_loss(sal_pred, sal_target) * self.alpha_sal
-
+        loss = self.mse_loss(pred, y)
         true = y.detach().cpu().numpy()
         pred = pred.detach().cpu().numpy()
         return {'loss': loss, 'results': (true, pred)}

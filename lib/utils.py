@@ -83,11 +83,6 @@ def get_default_opts():
 
 def get_args():
     parser = ArgumentParser()
-
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('--sal', dest='saliency', action='store_true')
-    group.add_argument('--no-sal', dest='saliency', action='store_false')
-    group.set_defaults(saliency=True)    
     
     parser.add_argument('--name', type=str, required=True, help='name of experiment')
     parser.add_argument('--device', type=int, required=True, help='index of cuda device')
