@@ -51,7 +51,8 @@ class Model(pl.LightningModule):
             LinearBlock(256, 1, 0, activation=False)
         )
 
-        self.sal_conv = nn.Conv2d(1408, 1, (1, 1), 1, 0)
+        N_CHANNELS_IN_LAST_LAYER = 1408
+        self.sal_conv = nn.Conv2d(N_CHANNELS_IN_LAST_LAYER, 1, (1, 1), 1, 0)
         self.mse_loss = nn.MSELoss()
         self.alpha_sal = opts['alpha_sal'] if opts['saliency'] is True else 0
         self.use_saliency = opts['saliency']
