@@ -1,19 +1,6 @@
-clive:
-    images: iqa/CLIVE/images
-    saliency_maps: iqa/CLIVE/saliency_maps
-    data: iqa/CLIVE/data.csv
-koniq10k:
-    images: iqa/koniq10k/images
-    saliency_maps: iqa/koniq10k/saliency_maps
-    data: iqa/koniq10k/data.csv
+# ==== constants ====
 
-image_shape:
-    - 384
-    - 512
-
-saliency_shape:
-    - 12
-    - 16
+saliency_type: multiple_fusion
 
 max_epochs: 30  
 batch_size: 16
@@ -22,7 +9,7 @@ learning_rate_head: 3.0e-4
 learning_rate_backbone: 3.0e-5
 alpha_sal: 0.2
 
-saliency_type: mult
+# ==== pytorch_lighting settings ====
 
 model_checkpoint_best:
     monitor: val_srocc
@@ -51,3 +38,22 @@ lr_dict:
     interval: epoch
     frequency: 1
     # monitor: val/srocc
+
+# ==== datasets ====
+
+clive:
+    images: iqa/CLIVE/images
+    saliency_maps: iqa/CLIVE/saliency_maps
+    data: iqa/CLIVE/data.csv
+koniq10k:
+    images: iqa/koniq10k/images
+    saliency_maps: iqa/koniq10k/saliency_maps
+    data: iqa/koniq10k/data.csv
+
+image_shape:
+    - 384
+    - 512
+
+saliency_shape:
+    - 12
+    - 16

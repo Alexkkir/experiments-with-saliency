@@ -54,8 +54,6 @@ class Model(pl.LightningModule):
         N_CHANNELS_IN_LAST_LAYER = 1408
         self.sal_conv = nn.Conv2d(N_CHANNELS_IN_LAST_LAYER, 1, (1, 1), 1, 0)
         self.mse_loss = nn.MSELoss()
-        self.alpha_sal = opts['alpha_sal'] if opts['saliency'] is True else 0
-        self.use_saliency = opts['saliency']
         self.test_dashboard = 'test'
         self.validation_batch = validation_batch
 
@@ -66,15 +64,11 @@ class Model(pl.LightningModule):
 
     def forward(self, x):
         x = self.backbone(x)
-        if self.use_saliency:
-            saliency = self.sal_conv(x)
-            x = saliency * x  # fusion
+        saliency = self.sal_conv(x)
+        x = saliency * x  # fusion
         x = self.mlp(x)
 
-        if self.use_saliency:
-            return x, saliency
-        else:
-            return x
+        return x, saliency
 
     def training_step(self, batch, batch_idx):
         return self._step(batch)
@@ -88,15 +82,11 @@ class Model(pl.LightningModule):
     def _step(self, batch):
         x, sal_target, y = batch['image'], batch['saliency'], batch['subj_mean']
 
-        if self.use_saliency:
-            pred, sal_pred = self(x)
-        else:
-            pred = self(x)
+        pred, sal_pred = self(x)
+
         pred = pred.flatten()
 
-        loss = self.mse_loss(pred, y) * (1 - self.alpha_sal)
-        if self.use_saliency:
-            loss += self.saliency_loss(sal_pred, sal_target) * self.alpha_sal
+        loss = self.mse_loss(pred, y) * (1 - self.alpha_sal) + self.saliency_loss(sal_pred, sal_target) * self.alpha_sal
 
         true = y.detach().cpu().numpy()
         pred = pred.detach().cpu().numpy()
