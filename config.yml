@@ -1,12 +1,13 @@
 # ==== constants ====
 
-saliency_type: multiple_concat_fusion
+saliency_type: multiple_concat_fusion_pretrained
 
-max_epochs: 30  
+max_epochs: 10  
 batch_size: 16
 num_workers: 16
-learning_rate_head: 3.0e-4
-learning_rate_backbone: 3.0e-5
+lr_head: 3.0e-5
+lr_backbone: 3.0e-6
+lr_concat_convs: 3.0e-7
 
 weights_pretrained: /home/26a_kir@lab.graphicon.ru/experiments-with-saliency/checkpoints/best_date=2023-02-12_14:11_val_srocc=0.892_epoch=22.ckpt
 

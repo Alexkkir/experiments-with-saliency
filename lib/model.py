@@ -110,8 +110,9 @@ class Model(pl.LightningModule):
     def configure_optimizers(self):
         """ Define optimizers and LR schedulers. """
         optimizer = torch.optim.Adam([
-            {'params': self.backbone.parameters(), 'lr': 3e-5},
-            {'params': self.mlp.parameters(), 'lr': 3e-4}
+            {'params': self.backbone.parameters(), 'lr': self.opts['lr_backbone']},
+            {'params': self.mlp.parameters(), 'lr': self.opts['lr_head']},
+            {'params': self.concat_convs.parameters(), 'lr': self.opts['lr_concat_convs']}
         ], weight_decay=3e-4)
 
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
