@@ -39,7 +39,6 @@ class Model(pl.LightningModule):
 
         self.backbone = torchvision.models.efficientnet_b2(
             weights=torchvision.models.EfficientNet_B2_Weights.IMAGENET1K_V1).features
-        # TODO: use pretrained weights
 
         self.mlp = nn.Sequential(
             nn.AdaptiveAvgPool2d((1, 1)),
@@ -48,6 +47,8 @@ class Model(pl.LightningModule):
             LinearBlock(1024, 256, 0.25),
             LinearBlock(256, 1, 0, activation=False)
         )
+
+        self.load_state_dict(torch.load(opts['weights_pretrained'])['state_dict'])
 
         self.mse_loss = nn.MSELoss()
         self.test_dashboard = 'test'
@@ -59,6 +60,12 @@ class Model(pl.LightningModule):
         concat_convs = [
             nn.Conv2d(DEPTHS[i] + 1, DEPTHS[i], 1, 1, 0) for i in range(LEN_BACKBONE)
         ]
+
+        for i in range(LEN_BACKBONE):
+            size = DEPTHS[i]
+            concat_convs[i].weight.data = torch.cat([torch.eye(size), torch.zeros(size, 1)], dim=1).unsqueeze(-1).unsqueeze(-1)
+            concat_convs[i].bias.data = torch.zeros(size)
+
         self.concat_convs = nn.Sequential(*concat_convs)
 
     def saliency_loss(self, pred, y):
@@ -77,7 +84,7 @@ class Model(pl.LightningModule):
     def _concat_saliency(self, x, sal, i):
         shape = x.shape[2:]
         sal = resize(sal, shape)
-        x = torch.cat([sal, x], dim=1)
+        x = torch.cat([x, sal], dim=1)
         x = self.concat_convs[i](x) 
         return x
 
