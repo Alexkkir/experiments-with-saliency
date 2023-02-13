@@ -17,3 +17,4 @@ mnist/
 .vscode
 __ipynb_checkpoints__
 __pycache__
+diff.diff

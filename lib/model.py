@@ -50,11 +50,13 @@ class Model(pl.LightningModule):
 
         self.load_state_dict(torch.load(opts['weights_pretrained'])['state_dict'])
 
+        self.backbone = nn.Sequential(nn.Identity(), *self.backbone)
+
         self.mse_loss = nn.MSELoss()
         self.test_dashboard = 'test'
         self.validation_batch = validation_batch
 
-        DEPTHS = [32, 16, 24, 48, 88, 120, 208, 352, 1408]
+        DEPTHS = [3, 32, 16, 24, 48, 88, 120, 208, 352, 1408]
         LEN_BACKBONE = len(self.backbone)
 
         concat_convs = [
@@ -67,11 +69,6 @@ class Model(pl.LightningModule):
             concat_convs[i].bias.data = torch.zeros(size)
 
         self.concat_convs = nn.Sequential(*concat_convs)
-
-    def saliency_loss(self, pred, y):
-        pred = pred / pred.mean()
-        y = y / y.mean()
-        return ((pred - y) ** 2).mean()
 
     def forward(self, x, sal):
         for i, layer in enumerate(self.backbone): 
