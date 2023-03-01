@@ -68,8 +68,6 @@ class Model(pl.LightningModule):
             concat_convs[i].weight.data = torch.cat([torch.eye(size), torch.zeros(size, 1)], dim=1).unsqueeze(-1).unsqueeze(-1)
             concat_convs[i].bias.data = torch.zeros(size)
 
-        # nn.Identity
-
         self.concat_convs = nn.Sequential(*concat_convs)
 
     def forward(self, x, sal):
@@ -78,8 +76,6 @@ class Model(pl.LightningModule):
             x = self._concat_saliency(x, sal, i)
         x = self.mlp(x)
         return x
-
-    downsampler = ...
 
     def _concat_saliency(self, x, sal, i):
         shape = x.shape[2:]
