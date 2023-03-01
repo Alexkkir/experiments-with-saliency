@@ -10,12 +10,12 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 def main():
     opts = lib.get_args()
 
-    loaders = lib.get_loaders(opts, fast=False)
+    loaders = lib.get_loaders(opts, fast=opts['debug'])
     validation_batch = next(iter(loaders['valid']))
 
     model = lib.Model(opts, validation_batch=validation_batch)
 
-    if opts['wandb']:
+    if not opts['debug']:
         wandb.init(
             entity='alexkkir',
             project='IQA', 
