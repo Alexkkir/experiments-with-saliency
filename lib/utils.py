@@ -89,7 +89,7 @@ def get_args():
 
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--no-debug', dest='debug', action='store_false')
-    parser.set_defaults(debug=True)
+    parser.set_defaults(debug=False)
 
     parser.add_argument('--vis-sal', dest='visualize_saliency', action='store_true')
     parser.set_defaults(visualize_saliency=False)

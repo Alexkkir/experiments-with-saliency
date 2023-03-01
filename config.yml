@@ -1,6 +1,6 @@
 # ==== constants ====
 
-saliency_type: multiple_concat_fusion_pretrained_sal+1
+saliency_type: mutli_pre_no-residual
 
 max_epochs: 15  
 batch_size: 16

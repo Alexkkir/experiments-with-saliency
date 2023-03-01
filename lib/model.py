@@ -58,6 +58,7 @@ class Model(pl.LightningModule):
 
         DEPTHS = [3, 32, 16, 24, 48, 88, 120, 208, 352, 1408]
         LEN_BACKBONE = len(self.backbone)
+        self.excluded_convs = [2, 3]
 
         concat_convs = [
             nn.Conv2d(DEPTHS[i] + 1, DEPTHS[i], 1, 1, 0) for i in range(LEN_BACKBONE)
@@ -73,7 +74,8 @@ class Model(pl.LightningModule):
     def forward(self, x, sal):
         for i, layer in enumerate(self.backbone): 
             x = layer(x)
-            x = self._concat_saliency(x, sal, i)
+            if i not in self.excluded_convs:
+                x = self._concat_saliency(x, sal, i)
         x = self.mlp(x)
         return x
 
